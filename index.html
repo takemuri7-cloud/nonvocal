@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101828">
+  <title>AIボーカル分離｜テスト版</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color-scheme:dark;background:#0b1020;color:#f5f7ff}
+    *,*::before,*::after{box-sizing:border-box}
+    body{margin:0;min-height:100vh;line-height:1.55}
+    .wrap{width:min(100%,600px);margin:auto;padding:25px 18px 48px}
+    .eyebrow{color:#8ce5d3;font-weight:700;font-size:.8rem;letter-spacing:.09em}
+    h1{margin:4px 0 8px;font-size:clamp(1.6rem,5vw,2.1rem);line-height:1.25}
+    p{margin:10px 0;color:#c2cbe0}
+    .card{background:#151e32;border:1px solid #2b3956;border-radius:18px;padding:20px;margin:20px 0;box-shadow:0 8px 24px #0003}
+    label{display:block;font-weight:700;margin:0 0 9px}
+    input[type=file],select{display:block;width:100%;background:#0e182b;color:#fff;border:1px solid #455571;border-radius:11px;padding:12px;font:inherit;min-height:49px}
+    input[type=file]::file-selector-button{border:0;border-radius:7px;background:#263c5c;color:white;padding:8px;margin-right:10px}
+    .hint{font-size:.84rem;color:#a8b9d2;margin-top:8px}
+    .fileinfo{overflow-wrap:anywhere;color:#b1e9dc;font-size:.9rem;margin-top:10px;min-height:1.5em}
+    button{width:100%;min-height:52px;background:#56d7bb;color:#0a1925;border:0;border-radius:12px;font:inherit;font-weight:800;cursor:pointer;margin-top:16px}
+    button[disabled]{opacity:.52;cursor:not-allowed}
+    button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid #fff;outline-offset:3px}
+    .status{color:#edf1fc;margin-top:12px;white-space:pre-wrap;overflow-wrap:anywhere;min-height:1.4em}
+    progress{width:100%;height:13px;accent-color:#56d7bb;margin-top:12px}
+    .result{display:none}
+    .result.show{display:block}
+    audio{width:100%;margin:10px 0 6px;max-width:100%}
+    .download{display:block;text-align:center;background:#375ad8;color:#fff;border-radius:12px;padding:14px 10px;text-decoration:none;font-weight:800;margin:14px 0 0}
+    [hidden]{display:none!important}
+    .secondary-download{background:#243452;border:1px solid #475875;font-size:.94rem}
+    .export-progress{width:100%;height:12px;accent-color:#56d7bb} 
+    .note{font-size:.85rem;color:#adb9ce}
+    .detail{margin-top:18px;font-size:.9rem}
+    .detail summary{cursor:pointer;color:#d1e6ff}
+    .detail p{margin-bottom:0}
+    .divider{height:1px;background:#35435b;margin:20px 0}
+    small{font-size:.8rem;color:#9badc7}
+    @media(prefers-reduced-motion:no-preference){button:not(:disabled):active{transform:scale(.99)}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="eyebrow">MOISESの発想を参考にした独立テストアプリ</div>
+    <h1>AIボーカル分離</h1>
+    <p>音楽から<strong>ボーカルと伴奏をAIで分離</strong>し、伴奏だけを聴くテストです。音量や左右チャンネルの打ち消しではありません。</p>
+    <section class="card" aria-label="音楽ファイルの選択と分離">
+      <label for="music">1．音楽ファイルを選ぶ</label>
+      <input id="music" type="file" accept="audio/*,video/mp4,.m4a,.mp4,.aac,.mp3,.wav,.flac" aria-describedby="fileHelp">
+      <p id="fileHelp" class="hint">MP3・M4A・WAVなど。MP4は収録方式によって読み込めない場合があります。まずは短い曲でテストしてください。</p>
+      <div class="fileinfo" id="fileInfo"></div>
+      <div class="divider"></div>
+      <label for="model">2．AIモデルを選ぶ</label>
+      <select id="model">
+        <option value="UVR_MDXNET_KARA_2">軽量テスト｜主旋律の声を減らす</option>
+        <option value="UVR-MDX-NET-Inst_HQ_3">伴奏重視｜ボーカル除去</option>
+      </select>
+      <p class="hint">モデルは初回に数十MBのAIモデルをダウンロードします。処理は端末内で実行。通信環境やスマホの空きメモリによっては失敗する場合があります。</p>
+      <button id="run" type="button" disabled>3．AIでボーカルを分離</button>
+      <p class="status" id="status" role="status" aria-live="polite">ファイルを選択してください。</p>
+      <progress id="progress" value="0" max="1" hidden aria-label="処理の進捗"></progress>
+    </section>
+    <section class="card" aria-label="原曲の試聴">
+      <label for="original">原曲</label>
+      <audio id="original" controls preload="metadata"></audio>
+    </section>
+    <section id="result" class="card result" aria-label="AI分離後の伴奏">
+      <label for="instrumental">ボーカル除去後の伴奏</label>
+      <audio id="instrumental" controls preload="metadata"></audio>
+      <button id="makeMp3" type="button">MP3を作成（圧縮・160kbps）</button>
+      <p class="status" id="mp3Status" role="status" aria-live="polite"></p>
+      <progress class="export-progress" id="mp3Progress" max="1" value="0" hidden aria-label="MP3作成の進捗"></progress>
+      <a class="download" id="mp3Download" hidden>完成したMP3をダウンロード</a>
+      <a class="download secondary-download" id="download" href="#">WAVで保存（予備）</a>
+      <p class="note">MP3は圧縮されるため、WAVよりファイルサイズが小さくなります。伴奏の音質はMP3化で多少変化します。原曲は変更しません。</p>
+    </section>
+    <details class="detail">
+      <summary>技術・制約について</summary>
+      <p>GitHub公開の <a href="https://github.com/incidentist/web-audio-separation" target="_blank" rel="noopener noreferrer">web-audio-separation</a> を利用しています。Moisesの公式アプリや内部技術を複製したものではありません。<br>
+      分離の精度は楽曲・AIモデルによって変化します。コーラスや楽器成分が混ざる場合があります。現在はベース単独の抽出には未対応です。</p>
+      <p>音楽ファイルは外部のAI処理サーバーに送らず、ブラウザ内で分離します。ただし、アプリは外部の配信先からAIモデルやプログラムを読み込むため、使用時には通信が発生します。APIキーや曲ごとのAI利用料金は必要ありません。</p>
+      <p>MP3保存は <a href="https://github.com/zhuker/lamejs" target="_blank" rel="noopener noreferrer">lamejs</a>（LGPL-3.0）を利用します。権利者の許可なく加工済み音源を公開・配布しないでください。</p>
+    </details>
+    <small>個人検証用の試作版 · 初回はモデル数十MB以上の通信あり · GitHub Pagesで公開して利用 · MP3エンコーダー：lamejs（LGPL-3.0）</small>
+  </main>
+  <!-- Existing MIT-licensed separation package, no build tools required. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "onnxruntime-web": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.29.0/dist/ort.min.mjs",
+      "web-audio-separation": "https://cdn.jsdelivr.net/npm/web-audio-separation@0.3.1/dist/index.js"
+    }
+  }
+  </script>
+  <script type="module">
+// GitHub: https://github.com/incidentist/web-audio-separation
+// Uses the project's published package and registered pretrained MDX models.
+// No bespoke vocal-cancellation / frequency filtering is performed.
+// MIT-licensed third-party audio separation library loaded from the CDN.
+// Keep the UI responsive if the CDN cannot be reached.
+let separationApi = null;
+async function loadSeparationApi() {
+  if (!separationApi) {
+    separationApi = await import('web-audio-separation');
+    if (typeof separationApi.createSeparator !== 'function') {
+      throw new Error('分離ライブラリを正しく読み込めませんでした。');
+    }
+  }
+  return separationApi;
+}
+
+const $ = (id) => document.getElementById(id);
+const fileInput = $('music');
+const modelInput = $('model');
+const runButton = $('run');
+const fileInfo = $('fileInfo');
+const statusEl = $('status');
+const progressEl = $('progress');
+const resultEl = $('result');
+const originalPlayer = $('original');
+const instrumentalPlayer = $('instrumental');
+const download = $('download');
+const makeMp3 = $('makeMp3');
+const mp3Status = $('mp3Status');
+const mp3Progress = $('mp3Progress');
+const mp3Download = $('mp3Download');
+
+let originalUrl = null;
+let instrumentalUrl = null;
+let mp3Url = null;
+let busy = false;
+let mp3Busy = false;
+let currentOutputName = "instrumental";
+let mp3EncoderPromise = null;
+const MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+function setStatus(message) {
+  statusEl.textContent = message;
+}
+
+function clearMp3() {
+  mp3Download.removeAttribute('href');
+  mp3Download.removeAttribute('download');
+  mp3Download.hidden = true;
+  mp3Progress.hidden = true;
+  mp3Progress.value = 0;
+  mp3Status.textContent = '';
+  makeMp3.disabled = false;
+  if (mp3Url) URL.revokeObjectURL(mp3Url);
+  mp3Url = null;
+}
+
+function resetResult() {
+  clearMp3();
+  instrumentalPlayer.pause();
+  instrumentalPlayer.removeAttribute('src');
+  instrumentalPlayer.load();
+  download.removeAttribute('href');
+  download.removeAttribute('download');
+  resultEl.classList.remove('show');
+  if (instrumentalUrl) URL.revokeObjectURL(instrumentalUrl);
+  instrumentalUrl = null;
+  progressEl.hidden = true;
+  progressEl.value = 0;
+}
+
+function updateChosenFile() {
+  if (busy || mp3Busy) return;
+  resetResult();
+  originalPlayer.pause();
+  originalPlayer.removeAttribute('src');
+  originalPlayer.load();
+  if (originalUrl) URL.revokeObjectURL(originalUrl);
+  originalUrl = null;
+
+  const file = fileInput.files?.[0];
+  if (!file) {
+    runButton.disabled = true;
+    fileInfo.textContent = '';
+    setStatus('ファイルを選択してください。');
+    return;
+  }
+  const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+  fileInfo.textContent = `${file.name}（${sizeMb}MB）`;
+  if (file.size === 0 || file.size > MAX_FILE_BYTES) {
+    runButton.disabled = true;
+    setStatus('ファイルは25MB以下の音楽ファイルを選んでください。');
+    return;
+  }
+  originalUrl = URL.createObjectURL(file);
+  originalPlayer.src = originalUrl;
+  runButton.disabled = false;
+  setStatus('準備完了。AI分離ボタンを押してください。');
+}
+
+function reportProgress(progress) {
+  if (progress.stage === separationApi.SeparationStage.LoadingModel) {
+    setStatus('AIモデルを読み込み中（初回はAIモデルのダウンロードがあります）…');
+    progressEl.hidden = false;
+    progressEl.value = progress.fraction;
+  } else if (progress.stage === separationApi.SeparationStage.Demixing) {
+    const percent = Math.min(100, Math.round(progress.fraction * 100));
+    setStatus(`AIが分離中… ${percent}%\nこの画面を閉じずにお待ちください。`);
+    progressEl.hidden = false;
+    progressEl.value = progress.fraction;
+  } else if (progress.stage === separationApi.SeparationStage.WritingOutput) {
+    setStatus('伴奏のWAVファイルを作成中…');
+    progressEl.hidden = false;
+    progressEl.value = progress.fraction;
+  }
+}
+
+async function separateWithBackend(modelName, inputUrl, providers) {
+  const { createSeparator } = await loadSeparationApi();
+  const separator = createSeparator(modelName, {
+    common: {
+      logLevel: 'error',
+      outputSingleStem: 'instrumental',
+      onProgress: reportProgress,
+    },
+    mdx: {
+      batchSize: 1,
+      executionProviders: providers,
+    },
+  });
+  await separator.loadModel();
+  return separator.separate(inputUrl);
+}
+
+async function runSeparation() {
+  const file = fileInput.files?.[0];
+  if (!file || busy || mp3Busy || !originalUrl) return;
+  busy = true;
+  runButton.disabled = true;
+  fileInput.disabled = true;
+  modelInput.disabled = true;
+  resetResult();
+  progressEl.hidden = false;
+  setStatus('AI分離の準備中…');
+
+  let sourceUrl = null;
+  try {
+    // Use an independent URL so changing player state does not affect processing.
+    sourceUrl = URL.createObjectURL(file);
+    const modelName = modelInput.value;
+    let urls;
+    const webgpuAvailable = Boolean(navigator.gpu);
+    if (webgpuAvailable) {
+      try {
+        urls = await separateWithBackend(modelName, sourceUrl, ['webgpu', 'wasm']);
+      } catch (gpuError) {
+        console.warn('WebGPU failed; retrying with WASM', gpuError);
+        setStatus('GPU処理が利用できなかったため、CPU処理で再試行中…');
+        urls = await separateWithBackend(modelName, sourceUrl, ['wasm']);
+      }
+    } else {
+      urls = await separateWithBackend(modelName, sourceUrl, ['wasm']);
+    }
+    if (!Array.isArray(urls) || urls.length !== 1) {
+      throw new Error('分離した伴奏を取得できませんでした。');
+    }
+    instrumentalUrl = urls[0];
+    instrumentalPlayer.src = instrumentalUrl;
+    instrumentalPlayer.load();
+    const safeName = file.name.replace(/\.[^/.]+$/, '').replace(/[\\/:*?"<>|]/g, '_');
+    download.href = instrumentalUrl;
+    download.download = `${safeName}_instrumental.wav`;
+    currentOutputName = `${safeName}_instrumental`;
+    resultEl.classList.add('show');
+    progressEl.value = 1;
+    setStatus('分離完了！ 下のプレイヤーで伴奏を再生できます。');
+    mp3Status.textContent = 'MP3保存する場合は「MP3を作成」を押してください。';
+  } catch (error) {
+    console.error('Separation error:', error);
+    const detail = error instanceof Error ? error.message : String(error);
+    setStatus(`分離できませんでした。\n${detail}\n\n確認：MP3/M4A/WAVで再試行・通信状況やメモリを確認してください。`);
+    progressEl.hidden = true;
+  } finally {
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    busy = false;
+    fileInput.disabled = false;
+    modelInput.disabled = false;
+    runButton.disabled = !fileInput.files?.length;
+  }
+}
+
+
+// MP3 is encoded only after AI separation succeeds. The existing separation
+// library and WAV result are unchanged, even if the MP3 encoder fails.
+// lamejs is loaded lazily via a pinned CDN URL (LGPL-3.0 license).
+function loadMp3Encoder() {
+  if (window.lamejs?.Mp3Encoder) return Promise.resolve(window.lamejs);
+  if (!mp3EncoderPromise) {
+    mp3EncoderPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js';
+      script.async = true;
+      script.onload = () => {
+        if (window.lamejs?.Mp3Encoder) resolve(window.lamejs);
+        else reject(new Error('MP3圧縮ライブラリの読み込みに失敗しました。'));
+      };
+      script.onerror = () => reject(new Error('MP3圧縮ライブラリを取得できません。通信を確認してください。'));
+      document.head.append(script);
+    }).catch(error => {
+      mp3EncoderPromise = null;
+      throw error;
+    });
+  }
+  return mp3EncoderPromise;
+}
+
+function readPcm16Wav(buffer) {
+  const dv = new DataView(buffer);
+  if (buffer.byteLength < 44 ||
+      dv.getUint32(0, false) !== 0x52494646 ||
+      dv.getUint32(8, false) !== 0x57415645) {
+    throw new Error('分離結果がWAV形式ではありません。WAVで保存してください。');
+  }
+  let offset = 12;
+  let fmt = null;
+  let dataOffset = -1;
+  let dataBytes = 0;
+  while (offset + 8 <= dv.byteLength) {
+    const id = dv.getUint32(offset, false);
+    const length = dv.getUint32(offset + 4, true);
+    const start = offset + 8;
+    if (start + length > dv.byteLength) throw new Error('WAVデータが途中で切れています。');
+    if (id === 0x666d7420 && length >= 16) { // fmt␠
+      fmt = {
+        format: dv.getUint16(start, true),
+        channels: dv.getUint16(start + 2, true),
+        sampleRate: dv.getUint32(start + 4, true),
+        blockAlign: dv.getUint16(start + 12, true),
+        bits: dv.getUint16(start + 14, true),
+      };
+    }
+    if (id === 0x64617461) { // data
+      dataOffset = start;
+      dataBytes = length;
+      break;
+    }
+    offset = start + length + (length & 1);
+  }
+  if (!fmt || dataOffset < 0 || fmt.format !== 1 || fmt.bits !== 16 ||
+      ![1, 2].includes(fmt.channels) || fmt.blockAlign !== fmt.channels * 2) {
+    throw new Error('このWAV形式はMP3変換に対応していません。WAVを利用してください。');
+  }
+  if (![32000, 44100, 48000].includes(fmt.sampleRate)) {
+    throw new Error('この音声サンプルレートはMP3変換に対応していません。');
+  }
+  const frames = Math.floor(dataBytes / fmt.blockAlign);
+  if (frames === 0) throw new Error('音声データが空です。');
+  return { dv, ...fmt, frames, dataOffset };
+}
+
+async function makeCompressedMp3() {
+  if (!instrumentalUrl || busy || mp3Busy) return;
+  mp3Busy = true;
+  makeMp3.disabled = true;
+  fileInput.disabled = true;
+  modelInput.disabled = true;
+  runButton.disabled = true;
+  mp3Download.hidden = true;
+  if (mp3Url) URL.revokeObjectURL(mp3Url);
+  mp3Url = null;
+  mp3Progress.hidden = false;
+  mp3Progress.value = 0;
+  mp3Status.textContent = 'MP3圧縮プログラムを準備中…';
+  try {
+    const { Mp3Encoder } = await loadMp3Encoder();
+    const response = await fetch(instrumentalUrl);
+    if (!response.ok) throw new Error('分離結果を読み込めませんでした。');
+    const wav = readPcm16Wav(await response.arrayBuffer());
+    // The source library creates 16-bit stereo WAV. Encode it blockwise,
+    // avoiding a second full-length decoded AudioBuffer allocation.
+    const encoder = new Mp3Encoder(wav.channels, wav.sampleRate, 160);
+    const block = 1152;
+    const left = new Int16Array(block);
+    const right = wav.channels === 2 ? new Int16Array(block) : null;
+    const chunks = [];
+    let encodedBytes = 0;
+    mp3Status.textContent = 'MP3に圧縮中…';
+    for (let frame = 0, iteration = 0; frame < wav.frames; frame += block, iteration++) {
+      const n = Math.min(block, wav.frames - frame);
+      for (let i = 0; i < n; i++) {
+        const addr = wav.dataOffset + (frame + i) * wav.blockAlign;
+        left[i] = wav.dv.getInt16(addr, true);
+        if (right) right[i] = wav.dv.getInt16(addr + 2, true);
+      }
+      const result = right
+        ? encoder.encodeBuffer(left.subarray(0, n), right.subarray(0, n))
+        : encoder.encodeBuffer(left.subarray(0, n));
+      if (result.length) {
+        chunks.push(new Uint8Array(result));
+        encodedBytes += result.length;
+      }
+      if (iteration % 36 === 0) {
+        const pct = Math.round(((frame + n) / wav.frames) * 100);
+        mp3Progress.value = (frame + n) / wav.frames;
+        mp3Status.textContent = `MP3に圧縮中… ${pct}%`;
+        await new Promise(requestAnimationFrame);
+      }
+    }
+    const tail = encoder.flush();
+    if (tail.length) {
+      chunks.push(new Uint8Array(tail));
+      encodedBytes += tail.length;
+    }
+    if (!encodedBytes) throw new Error('MP3データが作成されませんでした。');
+    const blob = new Blob(chunks, { type: 'audio/mpeg' });
+    mp3Url = URL.createObjectURL(blob);
+    mp3Download.href = mp3Url;
+    mp3Download.download = `${currentOutputName}.mp3`;
+    mp3Download.hidden = false;
+    mp3Progress.value = 1;
+    mp3Status.textContent = `MP3完成：${(blob.size / (1024 * 1024)).toFixed(1)}MB。下の青いリンクから保存してください。`;
+  } catch (error) {
+    console.error('MP3 encoding failed:', error);
+    mp3Progress.hidden = true;
+    mp3Status.textContent = `MP3変換に失敗しました：${error instanceof Error ? error.message : String(error)}\nWAV保存は引き続き利用できます。`;
+  } finally {
+    mp3Busy = false;
+    makeMp3.disabled = false;
+    fileInput.disabled = false;
+    modelInput.disabled = false;
+    runButton.disabled = !fileInput.files?.length;
+  }
+}
+
+makeMp3.addEventListener('click', makeCompressedMp3);
+
+fileInput.addEventListener('change', updateChosenFile);
+runButton.addEventListener('click', runSeparation);
+modelInput.addEventListener('change', () => {
+  if (busy || mp3Busy) return;
+  resetResult();
+  if (fileInput.files?.length) setStatus('モデルを変更しました。AI分離ボタンを押してください。');
+});
+window.addEventListener('pagehide', () => {
+  if (originalUrl) URL.revokeObjectURL(originalUrl);
+  if (instrumentalUrl) URL.revokeObjectURL(instrumentalUrl);
+  if (mp3Url) URL.revokeObjectURL(mp3Url);
+});
+
+  </script>
+</body>
+</html>
