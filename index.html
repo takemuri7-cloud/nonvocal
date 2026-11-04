@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101828">
-  <title>AIボーカル分離｜テスト版</title>
+  <title>AIボーカル分離｜選択保存版</title>
   <style>
     :root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color-scheme:dark;background:#0b1020;color:#f5f7ff}
     *,*::before,*::after{box-sizing:border-box}
@@ -30,6 +30,15 @@
     .download{display:block;text-align:center;background:#375ad8;color:#fff;border-radius:12px;padding:14px 10px;text-decoration:none;font-weight:800;margin:14px 0 0}
     [hidden]{display:none!important}
     .secondary-download{background:#243452;border:1px solid #475875;font-size:.94rem}
+    .save-choice{margin:0;padding:0;border:0}
+    .save-choice legend{font-weight:800;margin-bottom:12px}
+    .choices{display:grid;gap:10px}
+    .choice{display:flex;align-items:center;gap:12px;margin:0;padding:13px;background:#101a2e;border:1px solid #465776;border-radius:12px;font-weight:700;cursor:pointer;min-height:52px}
+    .choice:has(input:checked){background:#163a3a;border-color:#56d7bb}
+    .choice input{flex:none;width:19px;height:19px;accent-color:#56d7bb}
+    .output-line{padding:12px 0;border-top:1px solid #35435b}
+    .output-line strong{display:block;margin-bottom:4px}
+    .output-line .download{margin-top:8px}
     .export-progress{width:100%;height:12px;accent-color:#56d7bb} 
     .note{font-size:.85rem;color:#adb9ce}
     .detail{margin-top:18px;font-size:.9rem}
@@ -44,7 +53,7 @@
   <main class="wrap">
     <div class="eyebrow">MOISESの発想を参考にした独立テストアプリ</div>
     <h1>AIボーカル分離</h1>
-    <p>音楽から<strong>ボーカルと伴奏をAIで分離</strong>し、伴奏だけを聴くテストです。音量や左右チャンネルの打ち消しではありません。</p>
+    <p>音楽から<strong>ボーカルと伴奏をAIで分離</strong>し、両方を聴いて保存できます。音量や左右チャンネルの打ち消しではありません。</p>
     <section class="card" aria-label="音楽ファイルの選択と分離">
       <label for="music">1．音楽ファイルを選ぶ</label>
       <input id="music" type="file" accept="audio/*,video/mp4,.m4a,.mp4,.aac,.mp3,.wav,.flac" aria-describedby="fileHelp">
@@ -56,7 +65,9 @@
         <option value="UVR_MDXNET_KARA_2">軽量テスト｜主旋律の声を減らす</option>
         <option value="UVR-MDX-NET-Inst_HQ_3">伴奏重視｜ボーカル除去</option>
       </select>
-      <p class="hint">モデルは初回に数十MBのAIモデルをダウンロードします。処理は端末内で実行。通信環境やスマホの空きメモリによっては失敗する場合があります。</p>
+      <p class="hint">初回はAIモデルを取得します。再訪時はブラウザの保存状況により再取得する場合があります。音源の分離計算は端末内で行います。</p>
+      <p class="hint" id="modelCache">AIモデルの保存状態を確認中…</p>
+      <label class="hint" style="display:flex;align-items:center;gap:9px;font-weight:500"><input id="keepAwake" type="checkbox" checked> 処理中は画面のスリープを防ぐ（対応ブラウザのみ）</label>
       <button id="run" type="button" disabled>3．AIでボーカルを分離</button>
       <p class="status" id="status" role="status" aria-live="polite">ファイルを選択してください。</p>
       <progress id="progress" value="0" max="1" hidden aria-label="処理の進捗"></progress>
@@ -68,20 +79,48 @@
     <section id="result" class="card result" aria-label="AI分離後の伴奏">
       <label for="instrumental">ボーカル除去後の伴奏</label>
       <audio id="instrumental" controls preload="metadata"></audio>
-      <button id="makeMp3" type="button">MP3を作成（圧縮・160kbps）</button>
-      <p class="status" id="mp3Status" role="status" aria-live="polite"></p>
-      <progress class="export-progress" id="mp3Progress" max="1" value="0" hidden aria-label="MP3作成の進捗"></progress>
-      <a class="download" id="mp3Download" hidden>完成したMP3をダウンロード</a>
-      <a class="download secondary-download" id="download" href="#">WAVで保存（予備）</a>
-      <p class="note">MP3は圧縮されるため、WAVよりファイルサイズが小さくなります。伴奏の音質はMP3化で多少変化します。原曲は変更しません。</p>
+      <a class="download secondary-download" id="download" href="#">伴奏をWAVで保存（予備）</a>
+    </section>
+    <section id="vocalResult" class="card result" aria-label="分離後のボーカル">
+      <label for="vocals">ボーカルのみ（アカペラ）</label>
+      <audio id="vocals" controls preload="metadata"></audio>
+      <a id="vocalDownload" class="download secondary-download">ボーカルをWAVで保存（予備）</a>
+    </section>
+    <section id="savePanel" class="card result" aria-label="MP3の選択保存">
+      <fieldset class="save-choice" id="exportChoices">
+        <legend>4．MP3で保存する音源を選ぶ</legend>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="exportChoice" value="instrumental">伴奏のみ</label>
+          <label class="choice"><input type="radio" name="exportChoice" value="vocals">ボーカルのみ</label>
+          <label class="choice"><input type="radio" name="exportChoice" value="both" checked>両方（伴奏＋ボーカル）</label>
+        </div>
+      </fieldset>
+      <button id="exportSelected" type="button">選んだ音源をMP3にする</button>
+      <p id="exportStatus" class="status" role="status" aria-live="polite">分離した音源を160kbpsのMP3に圧縮できます。</p>
+      <div id="mp3Files" hidden>
+        <div id="instExportRow" class="output-line" hidden>
+          <strong>伴奏 MP3</strong>
+          <p id="mp3Status" class="status" role="status" aria-live="polite"></p>
+          <progress class="export-progress" id="mp3Progress" max="1" value="0" hidden aria-label="伴奏MP3作成の進捗"></progress>
+          <a class="download" id="mp3Download" hidden>伴奏MP3を保存</a>
+        </div>
+        <div id="vocalExportRow" class="output-line" hidden>
+          <strong>ボーカル MP3</strong>
+          <p id="vocalMp3Status" class="status" role="status" aria-live="polite"></p>
+          <progress id="vocalMp3Progress" class="export-progress" max="1" value="0" hidden aria-label="ボーカルMP3作成の進捗"></progress>
+          <a id="vocalMp3Download" class="download" hidden>ボーカルMP3を保存</a>
+        </div>
+      </div>
+      <p class="note">「両方」はAI分離をやり直さず、2つのMP3を続けて作ります。ZIPにはしません。Androidでは2件の自動ダウンロードが制限される場合があるため、完成後に表示される各保存ボタンを順にタップしてください。</p>
     </section>
     <details class="detail">
       <summary>技術・制約について</summary>
       <p>GitHub公開の <a href="https://github.com/incidentist/web-audio-separation" target="_blank" rel="noopener noreferrer">web-audio-separation</a> を利用しています。Moisesの公式アプリや内部技術を複製したものではありません。<br>
       分離の精度は楽曲・AIモデルによって変化します。コーラスや楽器成分が混ざる場合があります。現在はベース単独の抽出には未対応です。</p>
       <p>音楽ファイルは外部のAI処理サーバーに送らず、ブラウザ内で分離します。ただし、アプリは外部の配信先からAIモデルやプログラムを読み込むため、使用時には通信が発生します。APIキーや曲ごとのAI利用料金は必要ありません。</p>
-      <p>MP3保存は <a href="https://github.com/zhuker/lamejs" target="_blank" rel="noopener noreferrer">lamejs</a>（LGPL-3.0）を利用します。権利者の許可なく加工済み音源を公開・配布しないでください。</p>
+      <p>MP3保存は <a href="https://github.com/zhuker/lamejs" target="_blank" rel="noopener noreferrer">lamejs</a>（LGPL-3.0）を利用します。MP3圧縮は音源ごとに実行しますがAI分離の再実行は不要です。権利者の許可なく加工済み音源を公開・配布しないでください。</p>
     </details>
+    <p class="note">※ 他のアプリへ切り替えたときの処理継続はAndroidの制限により保証できません。途中でページが破棄された場合、分離計算の途中からは再開できません。</p>
     <small>個人検証用の試作版 · 初回はモデル数十MB以上の通信あり · GitHub Pagesで公開して利用 · MP3エンコーダー：lamejs（LGPL-3.0）</small>
   </main>
   <!-- Existing MIT-licensed separation package, no build tools required. -->
@@ -121,22 +160,46 @@ const resultEl = $('result');
 const originalPlayer = $('original');
 const instrumentalPlayer = $('instrumental');
 const download = $('download');
-const makeMp3 = $('makeMp3');
 const mp3Status = $('mp3Status');
 const mp3Progress = $('mp3Progress');
 const mp3Download = $('mp3Download');
+const vocalResult = $('vocalResult');
+const vocalsPlayer = $('vocals');
+const vocalDownload = $('vocalDownload');
+const vocalMp3Status = $('vocalMp3Status');
+const vocalMp3Progress = $('vocalMp3Progress');
+const vocalMp3Download = $('vocalMp3Download');
+const savePanel = $('savePanel');
+const exportChoices = $('exportChoices');
+const exportSelected = $('exportSelected');
+const exportStatus = $('exportStatus');
+const mp3Files = $('mp3Files');
+const instExportRow = $('instExportRow');
+const vocalExportRow = $('vocalExportRow');
+const keepAwake = $('keepAwake');
+const modelCache = $('modelCache');
 
 let originalUrl = null;
 let instrumentalUrl = null;
+let vocalUrl = null;
+let vocalMp3Url = null;
+let wakeLock = null;
 let mp3Url = null;
 let busy = false;
 let mp3Busy = false;
+let exportBusy = false;
 let currentOutputName = "instrumental";
+let vocalOutputName = "vocals";
 let mp3EncoderPromise = null;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function hasValidSelectedFile() {
+  const file = fileInput.files?.[0];
+  return Boolean(file && file.size > 0 && file.size <= MAX_FILE_BYTES && originalUrl);
 }
 
 function clearMp3() {
@@ -146,13 +209,33 @@ function clearMp3() {
   mp3Progress.hidden = true;
   mp3Progress.value = 0;
   mp3Status.textContent = '';
-  makeMp3.disabled = false;
   if (mp3Url) URL.revokeObjectURL(mp3Url);
   mp3Url = null;
 }
 
 function resetResult() {
   clearMp3();
+  vocalMp3Download.hidden = true;
+  vocalMp3Download.removeAttribute('href');
+  vocalMp3Status.textContent = '';
+  vocalMp3Progress.hidden = true;
+  vocalMp3Progress.value = 0;
+  if (vocalMp3Url) URL.revokeObjectURL(vocalMp3Url);
+  vocalMp3Url = null;
+  vocalsPlayer.pause();
+  vocalsPlayer.removeAttribute('src');
+  vocalsPlayer.load();
+  vocalDownload.removeAttribute('href');
+  vocalResult.classList.remove('show');
+  if (vocalUrl) URL.revokeObjectURL(vocalUrl);
+  vocalUrl = null;
+  savePanel.classList.remove('show');
+  exportSelected.disabled = false;
+  exportChoices.disabled = false;
+  exportStatus.textContent = '分離した音源を160kbpsのMP3に圧縮できます。';
+  mp3Files.hidden = true;
+  instExportRow.hidden = true;
+  vocalExportRow.hidden = true;
   instrumentalPlayer.pause();
   instrumentalPlayer.removeAttribute('src');
   instrumentalPlayer.load();
@@ -166,7 +249,7 @@ function resetResult() {
 }
 
 function updateChosenFile() {
-  if (busy || mp3Busy) return;
+  if (busy || mp3Busy || exportBusy) return;
   resetResult();
   originalPlayer.pause();
   originalPlayer.removeAttribute('src');
@@ -205,7 +288,7 @@ function reportProgress(progress) {
     progressEl.hidden = false;
     progressEl.value = progress.fraction;
   } else if (progress.stage === separationApi.SeparationStage.WritingOutput) {
-    setStatus('伴奏のWAVファイルを作成中…');
+    setStatus('伴奏とボーカルのWAVファイルを作成中…');
     progressEl.hidden = false;
     progressEl.value = progress.fraction;
   }
@@ -216,7 +299,7 @@ async function separateWithBackend(modelName, inputUrl, providers) {
   const separator = createSeparator(modelName, {
     common: {
       logLevel: 'error',
-      outputSingleStem: 'instrumental',
+      // Both stems are produced by one inference pass; no second AI run.
       onProgress: reportProgress,
     },
     mdx: {
@@ -228,9 +311,48 @@ async function separateWithBackend(modelName, inputUrl, providers) {
   return separator.separate(inputUrl);
 }
 
+async function acquireWakeLock() {
+  if (!keepAwake.checked || !('wakeLock' in navigator)) return;
+  try { wakeLock = await navigator.wakeLock.request('screen'); }
+  catch (err) { console.info('Wake Lock unavailable', err); }
+}
+async function releaseWakeLock() {
+  if (wakeLock) {
+    try { await wakeLock.release(); } catch (_) {}
+    wakeLock = null;
+  }
+}
+async function refreshModelCache() {
+  try {
+    if (!('caches' in window)) {
+      modelCache.textContent = 'モデル保存状況：このブラウザでは確認できません。'; return;
+    }
+    const cache = await caches.open('web-demix2-models');
+    const keys = await cache.keys();
+    const matching = keys.filter(k => k.url.includes('.onnx'));
+    const selectedModel = modelInput.value;
+    const cachedSelectedModel = matching.some(k => {
+      try {
+        const pathname = decodeURIComponent(new URL(k.url).pathname);
+        return pathname.endsWith(`/${selectedModel}.onnx`);
+      } catch (_) { return false; }
+    });
+    modelCache.textContent = cachedSelectedModel
+      ? '選択中のAIモデル：保存済み（起動時の読み込みは必要です）。'
+      : `選択中のAIモデル：未保存（保存済みの別モデル：${matching.length}件）。初回はダウンロードが必要です。`;
+  } catch (_) { modelCache.textContent = 'AIモデル保存状況：確認できません。'; }
+}
+
+function setRunCheckpoint(state) {
+  try {
+    if (state) sessionStorage.setItem('ai-vocal-process', JSON.stringify(state));
+    else sessionStorage.removeItem('ai-vocal-process');
+  } catch (_) {}
+}
+
 async function runSeparation() {
   const file = fileInput.files?.[0];
-  if (!file || busy || mp3Busy || !originalUrl) return;
+  if (!file || !hasValidSelectedFile() || busy || mp3Busy || exportBusy) return;
   busy = true;
   runButton.disabled = true;
   fileInput.disabled = true;
@@ -238,6 +360,8 @@ async function runSeparation() {
   resetResult();
   progressEl.hidden = false;
   setStatus('AI分離の準備中…');
+  setRunCheckpoint({ startedAt: Date.now(), filename: file.name, model: modelInput.value });
+  await acquireWakeLock();
 
   let sourceUrl = null;
   try {
@@ -257,20 +381,35 @@ async function runSeparation() {
     } else {
       urls = await separateWithBackend(modelName, sourceUrl, ['wasm']);
     }
-    if (!Array.isArray(urls) || urls.length !== 1) {
-      throw new Error('分離した伴奏を取得できませんでした。');
+    if (!Array.isArray(urls) || urls.length !== 2) {
+      throw new Error('分離したボーカル・伴奏を取得できませんでした。');
     }
-    instrumentalUrl = urls[0];
+    // The upstream library returns secondary stem first, then primary.
+    // The karaoke model has Instrumental as primary; Inst_HQ_3 also has Instrumental primary.
+    // Resolve the mapping from the model registry to avoid swapping stems.
+    const primary = separationApi.MODEL_REGISTRY?.[modelName]?.modelData?.primary_stem;
+    if (!primary) throw new Error('モデルの出力形式を確認できません。');
+    instrumentalUrl = primary === 'Instrumental' ? urls[1] : urls[0];
+    vocalUrl = primary === 'Instrumental' ? urls[0] : urls[1];
+    vocalsPlayer.src = vocalUrl;
+    vocalsPlayer.load();
     instrumentalPlayer.src = instrumentalUrl;
     instrumentalPlayer.load();
     const safeName = file.name.replace(/\.[^/.]+$/, '').replace(/[\\/:*?"<>|]/g, '_');
     download.href = instrumentalUrl;
     download.download = `${safeName}_instrumental.wav`;
     currentOutputName = `${safeName}_instrumental`;
+    vocalOutputName = `${safeName}_vocals`;
+    vocalDownload.href = vocalUrl;
+    vocalDownload.download = `${vocalOutputName}.wav`;
+    vocalResult.classList.add('show');
     resultEl.classList.add('show');
+    savePanel.classList.add('show');
     progressEl.value = 1;
-    setStatus('分離完了！ 下のプレイヤーで伴奏を再生できます。');
-    mp3Status.textContent = 'MP3保存する場合は「MP3を作成」を押してください。';
+    setStatus('分離完了！ 伴奏とアカペラを再生・保存できます。');
+    exportStatus.textContent = '保存したい音源を選び、「選んだ音源をMP3にする」を押してください。';
+    setRunCheckpoint(null);
+    refreshModelCache();
   } catch (error) {
     console.error('Separation error:', error);
     const detail = error instanceof Error ? error.message : String(error);
@@ -278,10 +417,12 @@ async function runSeparation() {
     progressEl.hidden = true;
   } finally {
     if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    await releaseWakeLock();
+    setRunCheckpoint(null);
     busy = false;
     fileInput.disabled = false;
     modelInput.disabled = false;
-    runButton.disabled = !fileInput.files?.length;
+    runButton.disabled = !hasValidSelectedFile();
   }
 }
 
@@ -354,22 +495,26 @@ function readPcm16Wav(buffer) {
   return { dv, ...fmt, frames, dataOffset };
 }
 
-async function makeCompressedMp3() {
-  if (!instrumentalUrl || busy || mp3Busy) return;
+async function makeCompressedMp3(kind = 'instrumental') {
+  const isVocal = kind === 'vocals';
+  const targetUrl = isVocal ? vocalUrl : instrumentalUrl;
+  const targetProgress = isVocal ? vocalMp3Progress : mp3Progress;
+  const targetStatus = isVocal ? vocalMp3Status : mp3Status;
+  const targetLink = isVocal ? vocalMp3Download : mp3Download;
+  if (!targetUrl || busy || mp3Busy) return false;
   mp3Busy = true;
-  makeMp3.disabled = true;
   fileInput.disabled = true;
   modelInput.disabled = true;
   runButton.disabled = true;
-  mp3Download.hidden = true;
-  if (mp3Url) URL.revokeObjectURL(mp3Url);
-  mp3Url = null;
-  mp3Progress.hidden = false;
-  mp3Progress.value = 0;
-  mp3Status.textContent = 'MP3圧縮プログラムを準備中…';
+  targetLink.hidden = true;
+  if (isVocal) { if (vocalMp3Url) URL.revokeObjectURL(vocalMp3Url); vocalMp3Url = null; }
+  else { if (mp3Url) URL.revokeObjectURL(mp3Url); mp3Url = null; }
+  targetProgress.hidden = false;
+  targetProgress.value = 0;
+  targetStatus.textContent = 'MP3圧縮プログラムを準備中…';
   try {
     const { Mp3Encoder } = await loadMp3Encoder();
-    const response = await fetch(instrumentalUrl);
+    const response = await fetch(targetUrl);
     if (!response.ok) throw new Error('分離結果を読み込めませんでした。');
     const wav = readPcm16Wav(await response.arrayBuffer());
     // The source library creates 16-bit stereo WAV. Encode it blockwise,
@@ -380,7 +525,7 @@ async function makeCompressedMp3() {
     const right = wav.channels === 2 ? new Int16Array(block) : null;
     const chunks = [];
     let encodedBytes = 0;
-    mp3Status.textContent = 'MP3に圧縮中…';
+    targetStatus.textContent = 'MP3に圧縮中…';
     for (let frame = 0, iteration = 0; frame < wav.frames; frame += block, iteration++) {
       const n = Math.min(block, wav.frames - frame);
       for (let i = 0; i < n; i++) {
@@ -397,8 +542,8 @@ async function makeCompressedMp3() {
       }
       if (iteration % 36 === 0) {
         const pct = Math.round(((frame + n) / wav.frames) * 100);
-        mp3Progress.value = (frame + n) / wav.frames;
-        mp3Status.textContent = `MP3に圧縮中… ${pct}%`;
+        targetProgress.value = (frame + n) / wav.frames;
+        targetStatus.textContent = `MP3に圧縮中… ${pct}%`;
         await new Promise(requestAnimationFrame);
       }
     }
@@ -409,39 +554,112 @@ async function makeCompressedMp3() {
     }
     if (!encodedBytes) throw new Error('MP3データが作成されませんでした。');
     const blob = new Blob(chunks, { type: 'audio/mpeg' });
-    mp3Url = URL.createObjectURL(blob);
-    mp3Download.href = mp3Url;
-    mp3Download.download = `${currentOutputName}.mp3`;
-    mp3Download.hidden = false;
-    mp3Progress.value = 1;
-    mp3Status.textContent = `MP3完成：${(blob.size / (1024 * 1024)).toFixed(1)}MB。下の青いリンクから保存してください。`;
+    const finalUrl = URL.createObjectURL(blob);
+    if (isVocal) vocalMp3Url = finalUrl;
+    else mp3Url = finalUrl;
+    targetLink.href = finalUrl;
+    targetLink.download = `${isVocal ? vocalOutputName : currentOutputName}.mp3`;
+    targetLink.hidden = false;
+    targetProgress.value = 1;
+    targetStatus.textContent = `MP3完成：${(blob.size / (1024 * 1024)).toFixed(1)}MB`;
+    return true;
   } catch (error) {
     console.error('MP3 encoding failed:', error);
-    mp3Progress.hidden = true;
-    mp3Status.textContent = `MP3変換に失敗しました：${error instanceof Error ? error.message : String(error)}\nWAV保存は引き続き利用できます。`;
+    targetProgress.hidden = true;
+    targetStatus.textContent = `MP3変換に失敗しました：${error instanceof Error ? error.message : String(error)}\nWAV保存は引き続き利用できます。`;
+    return false;
   } finally {
     mp3Busy = false;
-    makeMp3.disabled = false;
-    fileInput.disabled = false;
-    modelInput.disabled = false;
-    runButton.disabled = !fileInput.files?.length;
+    fileInput.disabled = exportBusy;
+    modelInput.disabled = exportBusy;
+    runButton.disabled = exportBusy || !hasValidSelectedFile();
   }
 }
 
-makeMp3.addEventListener('click', makeCompressedMp3);
+// Convert only the checked choice. "Both" builds the two files sequentially
+// to reduce peak memory. On Android each download remains a separate tap;
+// browsers may block automatically initiated multiple downloads.
+async function prepareSelectedMp3() {
+  if (busy || mp3Busy || exportBusy || !instrumentalUrl || !vocalUrl) return;
+  const choice = document.querySelector('input[name="exportChoice"]:checked')?.value;
+  if (!['instrumental', 'vocals', 'both'].includes(choice)) return;
+  const wantInst = choice === 'instrumental' || choice === 'both';
+  const wantVocal = choice === 'vocals' || choice === 'both';
+  exportBusy = true;
+  exportSelected.disabled = true;
+  exportChoices.disabled = true;
+  fileInput.disabled = true;
+  modelInput.disabled = true;
+  runButton.disabled = true;
+  mp3Files.hidden = false;
+  instExportRow.hidden = !wantInst;
+  vocalExportRow.hidden = !wantVocal;
+  let okInst = !wantInst;
+  let okVocal = !wantVocal;
+  try {
+    if (wantInst) {
+      if (mp3Url) {
+        okInst = true;
+        mp3Status.textContent = '作成済みのMP3を再利用できます。';
+      } else {
+        exportStatus.textContent = choice === 'both' ? '1/2：伴奏MP3を作成中…' : '伴奏MP3を作成中…';
+        okInst = await makeCompressedMp3('instrumental');
+      }
+    }
+    if (wantVocal) {
+      if (vocalMp3Url) {
+        okVocal = true;
+        vocalMp3Status.textContent = '作成済みのMP3を再利用できます。';
+      } else {
+        exportStatus.textContent = choice === 'both' ? '2/2：ボーカルMP3を作成中…' : 'ボーカルMP3を作成中…';
+        okVocal = await makeCompressedMp3('vocals');
+      }
+    }
+    if (okInst && okVocal) {
+      exportStatus.textContent = choice === 'both'
+        ? '両方のMP3が完成しました。下の2つの「保存」を順にタップしてください。'
+        : 'MP3が完成しました。下の「保存」をタップしてください。';
+    } else {
+      exportStatus.textContent = '一部のMP3変換に失敗しました。表示されたエラーを確認してください。WAVでの保存もできます。';
+    }
+  } finally {
+    exportBusy = false;
+    exportSelected.disabled = false;
+    exportChoices.disabled = false;
+    fileInput.disabled = false;
+    modelInput.disabled = false;
+    runButton.disabled = !hasValidSelectedFile();
+  }
+}
+
+exportSelected.addEventListener('click', prepareSelectedMp3);
+exportChoices.addEventListener('change', () => {
+  if (exportBusy) return;
+  mp3Files.hidden = true;
+  exportStatus.textContent = '選択を変更しました。「選んだ音源をMP3にする」を押してください（作成済みのMP3は再利用します）。';
+});
 
 fileInput.addEventListener('change', updateChosenFile);
 runButton.addEventListener('click', runSeparation);
 modelInput.addEventListener('change', () => {
-  if (busy || mp3Busy) return;
+  if (busy || mp3Busy || exportBusy) return;
   resetResult();
   if (fileInput.files?.length) setStatus('モデルを変更しました。AI分離ボタンを押してください。');
+  refreshModelCache();
 });
-window.addEventListener('pagehide', () => {
-  if (originalUrl) URL.revokeObjectURL(originalUrl);
-  if (instrumentalUrl) URL.revokeObjectURL(instrumentalUrl);
-  if (mp3Url) URL.revokeObjectURL(mp3Url);
-});
+// Do not revoke blob URLs on pagehide. Chrome may keep this page in the
+// back/forward cache; revoking then breaks playback and saving after return.
+// resetResult/updateChosenFile revoke replaced audio URLs; unloading the
+// document releases the remaining URLs automatically.
+try {
+  const previous = sessionStorage.getItem('ai-vocal-process');
+  if (previous) {
+    const state = JSON.parse(previous);
+    setStatus(`前回の処理はページの再読み込みにより中断されました（${state.filename || '音楽ファイル'}）。ファイルを選び直して実行してください。`);
+    setRunCheckpoint(null);
+  }
+} catch (_) {}
+refreshModelCache();
 
   </script>
 </body>
