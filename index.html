@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101828">
-  <title>AIボーカル分離｜選択保存版</title>
+  <title>AIボーカル分離｜伴奏・アカペラ対応版 v1.2</title>
   <style>
     :root{font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;color-scheme:dark;background:#0b1020;color:#f5f7ff}
     *,*::before,*::after{box-sizing:border-box}
@@ -64,8 +64,9 @@
       <select id="model">
         <option value="UVR_MDXNET_KARA_2">軽量テスト｜主旋律の声を減らす</option>
         <option value="UVR-MDX-NET-Inst_HQ_3">伴奏重視｜ボーカル除去</option>
+        <option value="UVR-MDX-NET-Voc_FT">歌声重視｜アカペラ抽出（推奨）</option>
       </select>
-      <p class="hint">初回はAIモデルを取得します。再訪時はブラウザの保存状況により再取得する場合があります。音源の分離計算は端末内で行います。</p>
+      <p class="hint" id="modelHelp">「軽量テスト」「伴奏重視」は伴奏を直接抽出し、ボーカルは残差から作るため、アカペラには楽器音が残ることがあります。「歌声重視」はボーカルを直接抽出します。初回はモデル取得（歌声重視：約67MB）が必要です。分離計算は端末内で行います。</p>
       <p class="hint" id="modelCache">AIモデルの保存状態を確認中…</p>
       <label class="hint" style="display:flex;align-items:center;gap:9px;font-weight:500"><input id="keepAwake" type="checkbox" checked> 処理中は画面のスリープを防ぐ（対応ブラウザのみ）</label>
       <button id="run" type="button" disabled>3．AIでボーカルを分離</button>
@@ -83,6 +84,7 @@
     </section>
     <section id="vocalResult" class="card result" aria-label="分離後のボーカル">
       <label for="vocals">ボーカルのみ（アカペラ）</label>
+      <p class="hint" id="vocalQualityNote">アカペラの品質はAIモデルに依存します。</p>
       <audio id="vocals" controls preload="metadata"></audio>
       <a id="vocalDownload" class="download secondary-download">ボーカルをWAVで保存（予備）</a>
     </section>
@@ -116,12 +118,12 @@
     <details class="detail">
       <summary>技術・制約について</summary>
       <p>GitHub公開の <a href="https://github.com/incidentist/web-audio-separation" target="_blank" rel="noopener noreferrer">web-audio-separation</a> を利用しています。Moisesの公式アプリや内部技術を複製したものではありません。<br>
-      分離の精度は楽曲・AIモデルによって変化します。コーラスや楽器成分が混ざる場合があります。現在はベース単独の抽出には未対応です。</p>
+      伴奏重視モデルのボーカルは原曲から伴奏を差し引いた残差です。歌声重視モデルはボーカルを直接推定しますが、完全なアカペラを保証するものではありません。分離精度は曲によって異なり、楽器が混ざる場合があります。現在はベース単独の抽出には未対応です。</p>
       <p>音楽ファイルは外部のAI処理サーバーに送らず、ブラウザ内で分離します。ただし、アプリは外部の配信先からAIモデルやプログラムを読み込むため、使用時には通信が発生します。APIキーや曲ごとのAI利用料金は必要ありません。</p>
       <p>MP3保存は <a href="https://github.com/zhuker/lamejs" target="_blank" rel="noopener noreferrer">lamejs</a>（LGPL-3.0）を利用します。MP3圧縮は音源ごとに実行しますがAI分離の再実行は不要です。権利者の許可なく加工済み音源を公開・配布しないでください。</p>
     </details>
     <p class="note">※ 他のアプリへ切り替えたときの処理継続はAndroidの制限により保証できません。途中でページが破棄された場合、分離計算の途中からは再開できません。</p>
-    <small>個人検証用の試作版 · 初回はモデル数十MB以上の通信あり · GitHub Pagesで公開して利用 · MP3エンコーダー：lamejs（LGPL-3.0）</small>
+    <small>検証版 v1.2 · 初回はモデル数十MB以上の通信あり · GitHub Pagesで公開して利用 · MP3エンコーダー：lamejs（LGPL-3.0）</small>
   </main>
   <!-- Existing MIT-licensed separation package, no build tools required. -->
   <script type="importmap">
@@ -164,6 +166,7 @@ const mp3Status = $('mp3Status');
 const mp3Progress = $('mp3Progress');
 const mp3Download = $('mp3Download');
 const vocalResult = $('vocalResult');
+const vocalQualityNote = $('vocalQualityNote');
 const vocalsPlayer = $('vocals');
 const vocalDownload = $('vocalDownload');
 const vocalMp3Status = $('vocalMp3Status');
@@ -385,8 +388,8 @@ async function runSeparation() {
       throw new Error('分離したボーカル・伴奏を取得できませんでした。');
     }
     // The upstream library returns secondary stem first, then primary.
-    // The karaoke model has Instrumental as primary; Inst_HQ_3 also has Instrumental primary.
-    // Resolve the mapping from the model registry to avoid swapping stems.
+    // KARA_2 / Inst_HQ_3 predict Instrumental; Voc_FT predicts Vocals.
+    // Resolve the mapping from the registry to avoid swapping stems.
     const primary = separationApi.MODEL_REGISTRY?.[modelName]?.modelData?.primary_stem;
     if (!primary) throw new Error('モデルの出力形式を確認できません。');
     instrumentalUrl = primary === 'Instrumental' ? urls[1] : urls[0];
@@ -400,6 +403,9 @@ async function runSeparation() {
     download.download = `${safeName}_instrumental.wav`;
     currentOutputName = `${safeName}_instrumental`;
     vocalOutputName = `${safeName}_vocals`;
+    vocalQualityNote.textContent = primary === 'Vocals'
+      ? '歌声を直接抽出した結果です。楽器が少し残る場合があります。'
+      : 'このモデルは伴奏を直接抽出します。ボーカルは差分から生成するため、楽器が多く残る場合があります。アカペラを改善するには「歌声重視」を選んで再分離してください。';
     vocalDownload.href = vocalUrl;
     vocalDownload.download = `${vocalOutputName}.wav`;
     vocalResult.classList.add('show');
